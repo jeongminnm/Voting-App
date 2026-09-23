@@ -16,18 +16,21 @@ export type Poll = {
   id: string;
   question: string;
   created_at: string;
+  closes_at: string | null;
   options: PollOption[];
 };
 
 export type NewPoll = {
   question: string;
   options: string[];
+  // 마감 시각(절대 시각 ISO 문자열). null 이면 마감 없음.
+  closesAt: string | null;
 };
 
 // neon 드라이버는 행을 Record<string, any> 로만 돌려주므로, 각 SELECT 가 돌려주는 행 모양을 여기서 명시한다.
 // (timestamptz 는 Date, integer 는 number 로 온다.)
 type PollSummaryRow = { id: string; question: string };
-type PollRow = { id: string; question: string; created_at: Date };
+type PollRow = { id: string; question: string; created_at: Date; closes_at: Date | null };
 type OptionRow = { id: string; label: string; vote_count: number };
 type IdRow = { id: string };
 type PollIdRow = { poll_id: string };
@@ -47,7 +50,7 @@ function isUuid(id: string): boolean {
 export async function getPoll(id: string): Promise<Poll | null> {
   if (!isUuid(id)) return null;
 
-  const polls = (await sql`select id, question, created_at from polls where id = ${id}`) as PollRow[];
+  const polls = (await sql`select id, question, created_at, closes_at from polls where id = ${id}`) as PollRow[];
   if (polls.length === 0) return null;
 
   const poll = polls[0];
@@ -57,6 +60,7 @@ export async function getPoll(id: string): Promise<Poll | null> {
     id: poll.id,
     question: poll.question,
     created_at: poll.created_at.toISOString(),
+    closes_at: poll.closes_at ? poll.closes_at.toISOString() : null,
     options: options.map((option) => ({ id: option.id, label: option.label, vote_count: option.vote_count })),
   };
 }
@@ -77,7 +81,7 @@ export async function castVote(pollId: string, optionId: string): Promise<boolea
 export async function createPoll(input: NewPoll): Promise<string> {
   const rows = (await sql`
     with new_poll as (
-      insert into polls (question) values (${input.question}) returning id
+      insert into polls (question, closes_at) values (${input.question}, ${input.closesAt}) returning id
     )
     insert into options (poll_id, label)
     select new_poll.id, label from new_poll, unnest(${input.options}::text[]) as label

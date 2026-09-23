@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { ApiError, CreatePollResponse } from "@/lib/api";
+import { kstLocalToIso } from "@/lib/kst";
 import {
   MAX_OPTION_LENGTH,
   MAX_OPTIONS,
@@ -21,6 +22,8 @@ export function PollForm() {
     { key: 1, value: "" },
   ]);
   const [nextKey, setNextKey] = useState(MIN_OPTIONS);
+  // datetime-local 값("YYYY-MM-DDTHH:mm"). 비어 있으면 마감 없음.
+  const [closesAtLocal, setClosesAtLocal] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -40,7 +43,9 @@ export function PollForm() {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const result = validatePollInput({ question, options: options.map((o) => o.value) });
+    // 입력한 날짜·시간은 브라우저 시간대와 상관없이 KST 로 해석한다 (ADR-0002).
+    const closesAt = closesAtLocal === "" ? null : kstLocalToIso(closesAtLocal);
+    const result = validatePollInput({ question, options: options.map((o) => o.value), closesAt });
     if (!result.ok) {
       setError(result.error);
       return;
@@ -52,7 +57,7 @@ export function PollForm() {
       const res = await fetch("/api/polls", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(result.value),
+        body: JSON.stringify({ question: result.value.question, options: result.value.options, closesAt }),
       });
       if (!res.ok) {
         const { error } = (await res.json()) as ApiError;
@@ -117,6 +122,19 @@ export function PollForm() {
           선택지 추가
         </button>
       </fieldset>
+
+      <label className="flex flex-col gap-2">
+        <span className="font-medium">
+          마감 시간 <span className="text-sm font-normal text-zinc-500">(선택, 한국 시간 기준)</span>
+        </span>
+        <input
+          type="datetime-local"
+          value={closesAtLocal}
+          onChange={(e) => setClosesAtLocal(e.target.value)}
+          className="rounded-md border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
+        />
+        <span className="text-sm text-zinc-500">비워 두면 마감 없이 계속 진행됩니다.</span>
+      </label>
 
       {error && (
         <p role="alert" className="text-sm text-red-600">

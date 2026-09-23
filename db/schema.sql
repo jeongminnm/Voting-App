@@ -11,3 +11,7 @@ create table options (
   label text not null,
   vote_count integer not null default 0
 );
+
+-- 부록 기능: 투표 마감 시각 (.scratch/poll-deadline-and-chart). Neon SQL Editor 에서 직접 실행한다.
+-- null 이면 마감 없음. 기존 투표는 모두 null 이 되어 마감 없이 동작한다.
+alter table polls add column closes_at timestamptz;

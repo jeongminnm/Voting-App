@@ -8,7 +8,7 @@ export const MAX_OPTION_LENGTH = 100;
 
 export type ValidationResult = { ok: true; value: NewPoll } | { ok: false; error: string };
 
-export function validatePollInput(input: { question?: unknown; options?: unknown }): ValidationResult {
+export function validatePollInput(input: { question?: unknown; options?: unknown; closesAt?: unknown }): ValidationResult {
   const question = typeof input.question === "string" ? input.question.trim() : "";
   if (question === "") return { ok: false, error: "질문을 입력해 주세요." };
   if (question.length > MAX_QUESTION_LENGTH) {
@@ -29,5 +29,22 @@ export function validatePollInput(input: { question?: unknown; options?: unknown
   // 공백 정리 후 문자열이 완전히 같을 때만 중복이다 (대소문자 구분: Pizza 와 pizza 는 다른 선택지).
   if (new Set(options).size !== options.length) return { ok: false, error: "같은 이름의 선택지가 있습니다." };
 
-  return { ok: true, value: { question, options } };
+  const closesAt = validateClosesAt(input.closesAt);
+  if (!closesAt.ok) return closesAt;
+
+  return { ok: true, value: { question, options, closesAt: closesAt.value } };
+}
+
+// 시간대(Z 또는 ±HH:MM)가 포함된 ISO 8601 날짜·시각. 시간대가 없으면 어느 나라 시각인지 모호하므로 거부한다.
+const ISO_WITH_TIMEZONE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/;
+
+// 마감 시각은 선택 입력이다. 생략·null 이면 마감 없음(null), 있으면 지금 이후의 절대 시각이어야 한다.
+function validateClosesAt(value: unknown): { ok: true; value: string | null } | { ok: false; error: string } {
+  if (value === undefined || value === null) return { ok: true, value: null };
+
+  const time = typeof value === "string" && ISO_WITH_TIMEZONE.test(value) ? Date.parse(value) : NaN;
+  if (Number.isNaN(time)) return { ok: false, error: "마감 시각 형식이 올바르지 않습니다." };
+  if (time <= Date.now()) return { ok: false, error: "마감 시각은 지금 이후로 입력해 주세요." };
+
+  return { ok: true, value: new Date(time).toISOString() };
 }

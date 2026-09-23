@@ -46,6 +46,7 @@ export async function createPoll(input: NewPoll): Promise<string> {
     id,
     question: input.question,
     created_at: new Date().toISOString(),
+    closes_at: input.closesAt,
     options: input.options.map((label) => ({
       id: crypto.randomUUID(),
       label,

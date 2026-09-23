@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiError, CreatePollResponse } from "@/lib/api";
 import type { Poll } from "@/lib/polls";
 import { readJson } from "@/test/read-json";
@@ -195,5 +195,62 @@ describe("DB 오류", () => {
 
     expect(res.status).toBe(500);
     expect(typeof (await readJson<ApiError>(res)).error).toBe("string");
+  });
+});
+
+describe("POST /api/polls 마감 시각 (closesAt)", () => {
+  // 현재 시각을 2026-09-23 12:00 KST 로 고정한다.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-23T12:00:00+09:00"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("미래의 KST 마감 시각을 저장하고, GET 의 closes_at 이 같은 절대 시각이다", async () => {
+    const res = await postPoll({ question: "Q", options: ["A", "B"], closesAt: "2026-09-30T18:00:00+09:00" });
+
+    expect(res.status).toBe(201);
+    const { id } = await readJson<CreatePollResponse>(res);
+    const poll = await readJson<Poll>(await getPoll(id));
+    expect(poll.closes_at).not.toBeNull();
+    expect(Date.parse(poll.closes_at as string)).toBe(Date.parse("2026-09-30T09:00:00Z"));
+  });
+
+  it("closesAt 을 생략하면 closes_at 이 null 이다 (마감 없음)", async () => {
+    const { id } = await readJson<CreatePollResponse>(await postPoll({ question: "Q", options: ["A", "B"] }));
+
+    expect((await readJson<Poll>(await getPoll(id))).closes_at).toBeNull();
+  });
+
+  it("closesAt 이 null 이면 closes_at 이 null 이다 (마감 없음)", async () => {
+    const res = await postPoll({ question: "Q", options: ["A", "B"], closesAt: null });
+
+    expect(res.status).toBe(201);
+    const { id } = await readJson<CreatePollResponse>(res);
+    expect((await readJson<Poll>(await getPoll(id))).closes_at).toBeNull();
+  });
+
+  it("시간대가 없는 closesAt 을 거부한다", async () => {
+    await expectRejected({ question: "Q", options: ["A", "B"], closesAt: "2026-09-30T18:00" });
+  });
+
+  it("형식이 잘못된 closesAt 을 거부한다", async () => {
+    await expectRejected({ question: "Q", options: ["A", "B"], closesAt: "내일 저녁" });
+    await expectRejected({ question: "Q", options: ["A", "B"], closesAt: "2026-13-45T25:00:00+09:00" });
+  });
+
+  it("문자열이 아닌 closesAt 을 거부한다", async () => {
+    await expectRejected({ question: "Q", options: ["A", "B"], closesAt: 1790000000000 });
+  });
+
+  it("현재 시각과 같은 closesAt 을 거부한다", async () => {
+    await expectRejected({ question: "Q", options: ["A", "B"], closesAt: "2026-09-23T12:00:00+09:00" });
+  });
+
+  it("과거의 closesAt 을 거부한다", async () => {
+    await expectRejected({ question: "Q", options: ["A", "B"], closesAt: "2026-09-23T11:59:00+09:00" });
   });
 });
