@@ -61,6 +61,20 @@ describe("POST /api/polls/[id]/vote", () => {
   });
 });
 
+describe("GET /api/polls/[id] 득표수 조회 (결과 화면이 쓰는 데이터)", () => {
+  it("여러 선택지에 나뉜 득표수를 선택지별로 돌려준다", async () => {
+    const pollId = await createPoll({ question: "점심 메뉴는?", options: ["치킨", "피자", "짜장면"] });
+    const chicken = await optionId(pollId, "치킨");
+    const pizza = await optionId(pollId, "피자");
+
+    await vote(pollId, { optionId: chicken });
+    await vote(pollId, { optionId: pizza });
+    await vote(pollId, { optionId: chicken });
+
+    expect(await voteCounts(pollId)).toEqual({ 치킨: 2, 피자: 1, 짜장면: 0 });
+  });
+});
+
 describe("POST /api/polls/[id]/vote 거부", () => {
   async function expectRejected(res: Response, status: number) {
     expect(res.status).toBe(status);
