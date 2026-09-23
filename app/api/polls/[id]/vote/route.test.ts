@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createPoll } from "@/lib/polls";
-import { resetFakePolls } from "@/test/fake-polls";
+import type { ApiError, VoteResponse } from "@/lib/api";
+import { createPoll, type Poll } from "@/lib/polls";
+import { readJson } from "@/test/read-json";
+import { resetFakePolls, simulateDbFailure } from "@/test/fake-polls";
 import { GET } from "../route";
 import { POST } from "./route";
 
@@ -21,9 +23,9 @@ async function voteCounts(pollId: string): Promise<Record<string, number>> {
   const res = await GET(new Request(`http://localhost/api/polls/${pollId}`), {
     params: Promise.resolve({ id: pollId }),
   });
-  const poll = await res.json();
+  const poll = await readJson<Poll>(res);
   return Object.fromEntries(
-    poll.options.map((o: { label: string; vote_count: number }) => [o.label, o.vote_count]),
+    poll.options.map((o) => [o.label, o.vote_count]),
   );
 }
 
@@ -31,8 +33,10 @@ async function optionId(pollId: string, label: string): Promise<string> {
   const res = await GET(new Request(`http://localhost/api/polls/${pollId}`), {
     params: Promise.resolve({ id: pollId }),
   });
-  const poll = await res.json();
-  return poll.options.find((o: { label: string }) => o.label === label).id;
+  const poll = await readJson<Poll>(res);
+  const option = poll.options.find((o) => o.label === label);
+  if (!option) throw new Error(`선택지 "${label}" 이(가) 없습니다.`);
+  return option.id;
 }
 
 beforeEach(() => {
@@ -46,7 +50,7 @@ describe("POST /api/polls/[id]/vote", () => {
     const res = await vote(pollId, { optionId: await optionId(pollId, "피자") });
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true });
+    expect(await readJson<VoteResponse>(res)).toEqual({ ok: true });
     expect(await voteCounts(pollId)).toEqual({ 치킨: 0, 피자: 1, 짜장면: 0 });
   });
 
@@ -78,7 +82,7 @@ describe("GET /api/polls/[id] 득표수 조회 (결과 화면이 쓰는 데이�
 describe("POST /api/polls/[id]/vote 거부", () => {
   async function expectRejected(res: Response, status: number) {
     expect(res.status).toBe(status);
-    const json = await res.json();
+    const json = await readJson<ApiError>(res);
     expect(typeof json.error).toBe("string");
     expect(json.error.length).toBeGreaterThan(0);
   }
@@ -131,5 +135,18 @@ describe("POST /api/polls/[id]/vote 거부", () => {
 
   it("형식이 잘못된 투표 id 는 404 다", async () => {
     await expectRejected(await vote("not-a-uuid", { optionId: "00000000-0000-4000-8000-000000000001" }), 404);
+  });
+});
+
+describe("POST /api/polls/[id]/vote DB 오류", () => {
+  it("500 과 한국어 error 를 돌려준다", async () => {
+    const pollId = await createPoll({ question: "Q", options: ["A", "B"] });
+    const a = await optionId(pollId, "A");
+    simulateDbFailure();
+
+    const res = await vote(pollId, { optionId: a });
+
+    expect(res.status).toBe(500);
+    expect(typeof (await readJson<ApiError>(res)).error).toBe("string");
   });
 });

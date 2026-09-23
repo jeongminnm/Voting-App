@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import type { ApiError } from "@/lib/api";
 import type { PollOption } from "@/lib/polls";
 
 export function VoteForm({ pollId, options }: { pollId: string; options: PollOption[] }) {
@@ -26,7 +27,8 @@ export function VoteForm({ pollId, options }: { pollId: string; options: PollOpt
         body: JSON.stringify({ optionId }),
       });
       if (!res.ok) {
-        setError((await res.json()).error);
+        const { error } = (await res.json()) as ApiError;
+        setError(error);
         return;
       }
       router.push(`/polls/${pollId}/results`);

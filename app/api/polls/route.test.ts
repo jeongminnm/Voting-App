@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { resetFakePolls } from "@/test/fake-polls";
+import type { ApiError, CreatePollResponse } from "@/lib/api";
+import type { Poll } from "@/lib/polls";
+import { readJson } from "@/test/read-json";
+import { resetFakePolls, simulateDbFailure } from "@/test/fake-polls";
 import { POST } from "./route";
 import { GET } from "./[id]/route";
 
@@ -30,15 +33,15 @@ describe("POST /api/polls", () => {
     const res = await postPoll({ question: "점심 메뉴는?", options: ["치킨", "피자"] });
 
     expect(res.status).toBe(201);
-    const { id } = await res.json();
+    const { id } = await readJson<CreatePollResponse>(res);
 
     const detail = await getPoll(id);
     expect(detail.status).toBe(200);
-    const poll = await detail.json();
+    const poll = await readJson<Poll>(detail);
     expect(poll.id).toBe(id);
     expect(poll.question).toBe("점심 메뉴는?");
     expect(typeof poll.created_at).toBe("string");
-    expect(poll.options.map((o: { label: string }) => o.label).sort()).toEqual(["치킨", "피자"].sort());
+    expect(poll.options.map((o) => o.label).sort()).toEqual(["치킨", "피자"].sort());
     for (const option of poll.options) {
       expect(typeof option.id).toBe("string");
       expect(option.vote_count).toBe(0);
@@ -49,7 +52,7 @@ describe("POST /api/polls", () => {
 async function expectRejected(body: unknown) {
   const res = await postPoll(body);
   expect(res.status).toBe(400);
-  const json = await res.json();
+  const json = await readJson<ApiError>(res);
   expect(typeof json.error).toBe("string");
   expect(json.error.length).toBeGreaterThan(0);
 }
@@ -57,11 +60,11 @@ async function expectRejected(body: unknown) {
 describe("POST /api/polls 질문 검증", () => {
   it("질문과 선택지의 앞뒤 공백을 정리해서 저장한다", async () => {
     const res = await postPoll({ question: "  점심 메뉴는?  ", options: [" 치킨 ", "피자  "] });
-    const { id } = await res.json();
+    const { id } = await readJson<CreatePollResponse>(res);
 
-    const poll = await (await getPoll(id)).json();
+    const poll = await readJson<Poll>(await getPoll(id));
     expect(poll.question).toBe("점심 메뉴는?");
-    expect(poll.options.map((o: { label: string }) => o.label).sort()).toEqual(["치킨", "피자"].sort());
+    expect(poll.options.map((o) => o.label).sort()).toEqual(["치킨", "피자"].sort());
   });
 
   it("빈 질문을 거부한다", async () => {
@@ -124,6 +127,11 @@ describe("POST /api/polls 선택지 검증", () => {
     await expectRejected({ question: "Q", options: ["치킨", " 치킨 "] });
   });
 
+  it("대소문자만 다른 선택지는 서로 다른 선택지로 허용한다", async () => {
+    const res = await postPoll({ question: "Q", options: ["Pizza", "pizza"] });
+    expect(res.status).toBe(201);
+  });
+
   it("100자 선택지는 허용한다", async () => {
     const res = await postPoll({ question: "Q", options: ["가".repeat(100), "B"] });
     expect(res.status).toBe(201);
@@ -156,7 +164,7 @@ describe("GET /api/polls/[id]", () => {
     const res = await getPoll("00000000-0000-4000-8000-000000000000");
 
     expect(res.status).toBe(404);
-    const body = await res.json();
+    const body = await readJson<ApiError>(res);
     expect(typeof body.error).toBe("string");
     expect(body.error.length).toBeGreaterThan(0);
   });
@@ -165,6 +173,27 @@ describe("GET /api/polls/[id]", () => {
     const res = await getPoll("not-a-uuid");
 
     expect(res.status).toBe(404);
-    expect(typeof (await res.json()).error).toBe("string");
+    expect(typeof (await readJson<ApiError>(res)).error).toBe("string");
+  });
+});
+
+describe("DB 오류", () => {
+  it("POST /api/polls 는 500 과 한국어 error 를 돌려준다", async () => {
+    simulateDbFailure();
+
+    const res = await postPoll({ question: "Q", options: ["A", "B"] });
+
+    expect(res.status).toBe(500);
+    expect(typeof (await readJson<ApiError>(res)).error).toBe("string");
+  });
+
+  it("GET /api/polls/[id] 는 500 과 한국어 error 를 돌려준다", async () => {
+    const { id } = await readJson<CreatePollResponse>(await postPoll({ question: "Q", options: ["A", "B"] }));
+    simulateDbFailure();
+
+    const res = await getPoll(id);
+
+    expect(res.status).toBe(500);
+    expect(typeof (await readJson<ApiError>(res)).error).toBe("string");
   });
 });

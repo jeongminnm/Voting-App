@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import type { ApiError, CreatePollResponse } from "@/lib/api";
 import {
   MAX_OPTION_LENGTH,
   MAX_OPTIONS,
@@ -53,12 +54,13 @@ export function PollForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(result.value),
       });
-      const body = await res.json();
       if (!res.ok) {
-        setError(body.error);
+        const { error } = (await res.json()) as ApiError;
+        setError(error);
         return;
       }
-      router.push(`/polls/${body.id}`);
+      const { id } = (await res.json()) as CreatePollResponse;
+      router.push(`/polls/${id}`);
     } catch {
       setError("요청을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
