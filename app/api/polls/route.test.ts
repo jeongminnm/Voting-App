@@ -1,0 +1,170 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resetFakePolls } from "@/test/fake-polls";
+import { POST } from "./route";
+import { GET } from "./[id]/route";
+
+vi.mock("@/lib/polls", () => import("@/test/fake-polls"));
+
+function postPoll(body: unknown) {
+  return POST(
+    new Request("http://localhost/api/polls", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: typeof body === "string" ? body : JSON.stringify(body),
+    }),
+  );
+}
+
+function getPoll(id: string) {
+  return GET(new Request(`http://localhost/api/polls/${id}`), {
+    params: Promise.resolve({ id }),
+  });
+}
+
+beforeEach(() => {
+  resetFakePolls();
+});
+
+describe("POST /api/polls", () => {
+  it("투표를 만들면 201 과 id 를 돌려주고, 그 id 로 조회할 수 있다", async () => {
+    const res = await postPoll({ question: "점심 메뉴는?", options: ["치킨", "피자"] });
+
+    expect(res.status).toBe(201);
+    const { id } = await res.json();
+
+    const detail = await getPoll(id);
+    expect(detail.status).toBe(200);
+    const poll = await detail.json();
+    expect(poll.id).toBe(id);
+    expect(poll.question).toBe("점심 메뉴는?");
+    expect(typeof poll.created_at).toBe("string");
+    expect(poll.options.map((o: { label: string }) => o.label).sort()).toEqual(["치킨", "피자"].sort());
+    for (const option of poll.options) {
+      expect(typeof option.id).toBe("string");
+      expect(option.vote_count).toBe(0);
+    }
+  });
+});
+
+async function expectRejected(body: unknown) {
+  const res = await postPoll(body);
+  expect(res.status).toBe(400);
+  const json = await res.json();
+  expect(typeof json.error).toBe("string");
+  expect(json.error.length).toBeGreaterThan(0);
+}
+
+describe("POST /api/polls 질문 검증", () => {
+  it("질문과 선택지의 앞뒤 공백을 정리해서 저장한다", async () => {
+    const res = await postPoll({ question: "  점심 메뉴는?  ", options: [" 치킨 ", "피자  "] });
+    const { id } = await res.json();
+
+    const poll = await (await getPoll(id)).json();
+    expect(poll.question).toBe("점심 메뉴는?");
+    expect(poll.options.map((o: { label: string }) => o.label).sort()).toEqual(["치킨", "피자"].sort());
+  });
+
+  it("빈 질문을 거부한다", async () => {
+    await expectRejected({ question: "", options: ["치킨", "피자"] });
+  });
+
+  it("공백뿐인 질문을 거부한다", async () => {
+    await expectRejected({ question: "   ", options: ["치킨", "피자"] });
+  });
+
+  it("질문이 없으면 거부한다", async () => {
+    await expectRejected({ options: ["치킨", "피자"] });
+  });
+
+  it("200자 질문은 허용한다", async () => {
+    const res = await postPoll({ question: "가".repeat(200), options: ["치킨", "피자"] });
+    expect(res.status).toBe(201);
+  });
+
+  it("201자 질문을 거부한다", async () => {
+    await expectRejected({ question: "가".repeat(201), options: ["치킨", "피자"] });
+  });
+});
+
+describe("POST /api/polls 선택지 검증", () => {
+  it("선택지 2개와 5개는 허용한다", async () => {
+    expect((await postPoll({ question: "Q", options: ["A", "B"] })).status).toBe(201);
+    expect((await postPoll({ question: "Q", options: ["A", "B", "C", "D", "E"] })).status).toBe(201);
+  });
+
+  it("선택지가 1개면 거부한다", async () => {
+    await expectRejected({ question: "Q", options: ["A"] });
+  });
+
+  it("선택지가 6개면 거부한다", async () => {
+    await expectRejected({ question: "Q", options: ["A", "B", "C", "D", "E", "F"] });
+  });
+
+  it("선택지가 없으면 거부한다", async () => {
+    await expectRejected({ question: "Q" });
+  });
+
+  it("빈 선택지를 거부한다", async () => {
+    await expectRejected({ question: "Q", options: ["A", ""] });
+  });
+
+  it("공백뿐인 선택지를 거부한다", async () => {
+    await expectRejected({ question: "Q", options: ["A", "   "] });
+  });
+
+  it("문자열이 아닌 선택지를 거부한다", async () => {
+    await expectRejected({ question: "Q", options: ["A", 3] });
+  });
+
+  it("같은 투표 안의 중복 선택지 이름을 거부한다", async () => {
+    await expectRejected({ question: "Q", options: ["치킨", "치킨"] });
+  });
+
+  it("공백을 정리하면 같아지는 선택지도 중복으로 거부한다", async () => {
+    await expectRejected({ question: "Q", options: ["치킨", " 치킨 "] });
+  });
+
+  it("100자 선택지는 허용한다", async () => {
+    const res = await postPoll({ question: "Q", options: ["가".repeat(100), "B"] });
+    expect(res.status).toBe(201);
+  });
+
+  it("101자 선택지를 거부한다", async () => {
+    await expectRejected({ question: "Q", options: ["가".repeat(101), "B"] });
+  });
+
+  it("거부된 투표는 저장되지 않는다", async () => {
+    await postPoll({ question: "Q", options: ["A"] });
+
+    const { listPolls } = await import("@/lib/polls");
+    expect(await listPolls()).toEqual([]);
+  });
+});
+
+describe("POST /api/polls 잘못된 요청", () => {
+  it("JSON 이 아닌 본문을 거부한다", async () => {
+    await expectRejected("{not json");
+  });
+
+  it("객체가 아닌 JSON 을 거부한다", async () => {
+    await expectRejected("null");
+  });
+});
+
+describe("GET /api/polls/[id]", () => {
+  it("없는 투표는 404 와 한국어 error 를 돌려준다", async () => {
+    const res = await getPoll("00000000-0000-4000-8000-000000000000");
+
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(typeof body.error).toBe("string");
+    expect(body.error.length).toBeGreaterThan(0);
+  });
+
+  it("형식이 잘못된 id 는 404 를 돌려준다", async () => {
+    const res = await getPoll("not-a-uuid");
+
+    expect(res.status).toBe(404);
+    expect(typeof (await res.json()).error).toBe("string");
+  });
+});
