@@ -18,6 +18,13 @@ export async function getPoll(id: string): Promise<Poll | null> {
   return poll ? structuredClone(poll) : null;
 }
 
+export async function castVote(pollId: string, optionId: string): Promise<boolean> {
+  const option = polls.find((p) => p.id === pollId)?.options.find((o) => o.id === optionId);
+  if (!option) return false;
+  option.vote_count += 1;
+  return true;
+}
+
 export async function createPoll(input: NewPoll): Promise<string> {
   const id = crypto.randomUUID();
   polls.push({

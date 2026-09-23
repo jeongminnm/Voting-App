@@ -52,6 +52,18 @@ export async function getPoll(id: string): Promise<Poll | null> {
   };
 }
 
+// 그 투표에 속한 선택지일 때만 득표수를 1 올린다. vote_count + 1 은 원자적이라 동시 투표에도 누락되지 않는다.
+export async function castVote(pollId: string, optionId: string): Promise<boolean> {
+  if (!isUuid(pollId) || !isUuid(optionId)) return false;
+
+  const rows = await sql`
+    update options set vote_count = vote_count + 1
+    where id = ${optionId} and poll_id = ${pollId}
+    returning id
+  `;
+  return rows.length > 0;
+}
+
 // 투표와 선택지를 한 문장으로 저장해, 둘 중 하나만 저장되는 일이 없게 한다.
 export async function createPoll(input: NewPoll): Promise<string> {
   const rows = await sql`
