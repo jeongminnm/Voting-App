@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
+import { isClosed } from "@/lib/closing";
+import { formatKst } from "@/lib/kst";
 import { getPoll } from "@/lib/polls";
 
 export default async function ResultsPage({ params }: PageProps<"/polls/[id]/results">) {
@@ -14,6 +16,12 @@ export default async function ResultsPage({ params }: PageProps<"/polls/[id]/res
       <div className="flex flex-col gap-1">
         <p className="text-sm text-zinc-500">결과</p>
         <h1 className="text-2xl font-semibold">{poll.question}</h1>
+        {poll.closes_at && (
+          <p className="text-sm text-zinc-500">
+            {isClosed(poll.closes_at) && <span className="font-medium text-red-600">마감된 투표입니다 · </span>}
+            마감: {formatKst(poll.closes_at)}
+          </p>
+        )}
       </div>
 
       <ul className="flex flex-col divide-y divide-zinc-200 rounded-md border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">

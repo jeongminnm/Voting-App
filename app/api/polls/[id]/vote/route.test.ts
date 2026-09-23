@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiError, VoteResponse } from "@/lib/api";
 import { createPoll, type Poll } from "@/lib/polls";
 import { readJson } from "@/test/read-json";
@@ -148,5 +148,89 @@ describe("POST /api/polls/[id]/vote DB 오류", () => {
 
     expect(res.status).toBe(500);
     expect(typeof (await readJson<ApiError>(res)).error).toBe("string");
+  });
+});
+
+describe("POST /api/polls/[id]/vote 마감", () => {
+  // 마감 시각: 2026-09-30 18:00 KST
+  const CLOSES_AT = "2026-09-30T09:00:00.000Z";
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function pollClosingAt(closesAt: string | null) {
+    return createPoll({ question: "Q", options: ["A", "B"], closesAt });
+  }
+
+  async function expectClosed(res: Response) {
+    expect(res.status).toBe(409);
+    expect(await readJson<ApiError>(res)).toEqual({ error: "마감된 투표입니다." });
+  }
+
+  it("마감 전에는 투표할 수 있다", async () => {
+    const pollId = await pollClosingAt(CLOSES_AT);
+    vi.setSystemTime(new Date("2026-09-30T08:59:59.999Z"));
+
+    const res = await vote(pollId, { optionId: await optionId(pollId, "A") });
+
+    expect(res.status).toBe(200);
+    expect(await voteCounts(pollId)).toEqual({ A: 1, B: 0 });
+  });
+
+  it("정확히 마감 시각이면 409 이고 득표수가 그대로다", async () => {
+    const pollId = await pollClosingAt(CLOSES_AT);
+    vi.setSystemTime(new Date(CLOSES_AT));
+
+    await expectClosed(await vote(pollId, { optionId: await optionId(pollId, "A") }));
+    expect(await voteCounts(pollId)).toEqual({ A: 0, B: 0 });
+  });
+
+  it("마감 후에는 409 이고 득표수가 그대로다", async () => {
+    const pollId = await pollClosingAt(CLOSES_AT);
+    vi.setSystemTime(new Date("2026-10-01T00:00:00Z"));
+
+    await expectClosed(await vote(pollId, { optionId: await optionId(pollId, "B") }));
+    expect(await voteCounts(pollId)).toEqual({ A: 0, B: 0 });
+  });
+
+  it("마감 시각이 없으면 기존처럼 투표할 수 있다", async () => {
+    const pollId = await pollClosingAt(null);
+    vi.setSystemTime(new Date("2099-01-01T00:00:00Z"));
+
+    const res = await vote(pollId, { optionId: await optionId(pollId, "A") });
+
+    expect(res.status).toBe(200);
+    expect(await voteCounts(pollId)).toEqual({ A: 1, B: 0 });
+  });
+
+  it("없는 투표는 마감 판정보다 먼저 404 다", async () => {
+    vi.setSystemTime(new Date("2026-10-01T00:00:00Z"));
+
+    const res = await vote("00000000-0000-4000-8000-000000000000", { optionId: "not-a-uuid" });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("마감된 투표에 잘못된 optionId 를 보내면 400 이 아니라 409 다", async () => {
+    const pollId = await pollClosingAt(CLOSES_AT);
+    vi.setSystemTime(new Date("2026-10-01T00:00:00Z"));
+
+    await expectClosed(await vote(pollId, { optionId: "not-a-uuid" }));
+    await expectClosed(await vote(pollId, {}));
+  });
+
+  it("마감 전에 잘못된 optionId 를 보내면 400 이다", async () => {
+    const pollId = await pollClosingAt(CLOSES_AT);
+    vi.setSystemTime(new Date("2026-09-30T08:00:00Z"));
+
+    const res = await vote(pollId, { optionId: "not-a-uuid" });
+
+    expect(res.status).toBe(400);
+    expect(await voteCounts(pollId)).toEqual({ A: 0, B: 0 });
   });
 });

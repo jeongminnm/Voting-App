@@ -5,7 +5,8 @@ import { useState } from "react";
 import type { ApiError } from "@/lib/api";
 import type { PollOption } from "@/lib/polls";
 
-export function VoteForm({ pollId, options }: { pollId: string; options: PollOption[] }) {
+// closed 이면(마감된 투표) 선택지와 투표하기 버튼을 보여주되 모두 비활성화한다.
+export function VoteForm({ pollId, options, closed }: { pollId: string; options: PollOption[]; closed: boolean }) {
   const router = useRouter();
   const [optionId, setOptionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -41,12 +42,12 @@ export function VoteForm({ pollId, options }: { pollId: string; options: PollOpt
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-      <fieldset className="flex flex-col gap-2">
+      <fieldset disabled={closed} className="flex flex-col gap-2">
         <legend className="sr-only">선택지</legend>
         {options.map((option) => (
           <label
             key={option.id}
-            className="flex cursor-pointer items-center gap-3 rounded-md border border-zinc-200 px-4 py-3 has-[:checked]:border-foreground dark:border-zinc-800"
+            className="flex cursor-pointer items-center gap-3 rounded-md border border-zinc-200 px-4 py-3 has-[:checked]:border-foreground has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60 dark:border-zinc-800"
           >
             <input
               type="radio"
@@ -68,7 +69,7 @@ export function VoteForm({ pollId, options }: { pollId: string; options: PollOpt
 
       <button
         type="submit"
-        disabled={submitting}
+        disabled={closed || submitting}
         className="rounded-md bg-foreground px-4 py-2 font-medium text-background disabled:opacity-50"
       >
         {submitting ? "투표하는 중..." : "투표하기"}

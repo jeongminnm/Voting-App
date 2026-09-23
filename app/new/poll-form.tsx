@@ -27,25 +27,32 @@ export function PollForm() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // 버튼 클릭과 한글 IME 조합 확정이 겹쳐도 이전 상태로 덮어쓰지 않도록 함수형 업데이트를 쓴다.
   function addOption() {
     if (options.length >= MAX_OPTIONS) return;
-    setOptions([...options, { key: nextKey, value: "" }]);
-    setNextKey(nextKey + 1);
+    setOptions((prev) => (prev.length >= MAX_OPTIONS ? prev : [...prev, { key: nextKey, value: "" }]));
+    setNextKey((k) => k + 1);
   }
 
   function removeOption(key: number) {
-    setOptions(options.filter((o) => o.key !== key));
+    setOptions((prev) => prev.filter((o) => o.key !== key));
   }
 
   function changeOption(key: number, value: string) {
-    setOptions(options.map((o) => (o.key === key ? { ...o, value } : o)));
+    setOptions((prev) => prev.map((o) => (o.key === key ? { ...o, value } : o)));
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // 질문·선택지는 React 상태가 아니라 제출 순간의 입력칸 값(FormData)으로 읽는다.
+    // 한글 IME 로 마지막 음절을 조합하는 중에 바로 제출하면 그 음절이 아직 상태에 반영되지 않았을 수 있다.
+    const form = new FormData(event.currentTarget);
+    const text = (value: FormDataEntryValue | null) => (typeof value === "string" ? value : "");
+    const questionValue = text(form.get("question"));
+    const optionValues = form.getAll("option").map(text);
     // 입력한 날짜·시간은 브라우저 시간대와 상관없이 KST 로 해석한다 (ADR-0002).
     const closesAt = closesAtLocal === "" ? null : kstLocalToIso(closesAtLocal);
-    const result = validatePollInput({ question, options: options.map((o) => o.value), closesAt });
+    const result = validatePollInput({ question: questionValue, options: optionValues, closesAt });
     if (!result.ok) {
       setError(result.error);
       return;
@@ -79,6 +86,7 @@ export function PollForm() {
         <span className="font-medium">질문</span>
         <input
           type="text"
+          name="question"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           maxLength={MAX_QUESTION_LENGTH}
@@ -95,6 +103,7 @@ export function PollForm() {
           <div key={option.key} className="flex items-center gap-2">
             <input
               type="text"
+              name="option"
               value={option.value}
               onChange={(e) => changeOption(option.key, e.target.value)}
               maxLength={MAX_OPTION_LENGTH}
