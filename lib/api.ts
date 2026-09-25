@@ -7,6 +7,9 @@ export type CreatePollResponse = { id: string };
 // POST /api/polls/[id]/vote 성공 응답
 export type VoteResponse = { ok: true };
 
+// POST /api/admin/login 성공 응답
+export type AdminLoginResponse = { ok: true };
+
 export function errorResponse(status: number, message: string) {
   return Response.json({ error: message } satisfies ApiError, { status });
 }

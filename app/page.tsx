@@ -1,18 +1,30 @@
 import Link from "next/link";
 import { connection } from "next/server";
+import { isAdmin } from "@/lib/admin-auth";
 import { listPolls } from "@/lib/polls";
 
 export default async function Home() {
   await connection();
-  const polls = await listPolls();
+  const [polls, admin] = await Promise.all([listPolls(), isAdmin()]);
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">투표 목록</h1>
-        <Link href="/new" className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background">
-          투표 만들기
-        </Link>
+        <div className="flex items-center gap-4">
+          {admin ? (
+            <Link href="/admin" className="text-sm font-medium underline">
+              운영자 대시보드
+            </Link>
+          ) : (
+            <Link href="/admin/login" className="text-sm font-medium underline">
+              운영자 로그인
+            </Link>
+          )}
+          <Link href="/new" className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background">
+            투표 만들기
+          </Link>
+        </div>
       </div>
 
       {polls.length === 0 ? (
