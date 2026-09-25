@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { connection } from "next/server";
+import { LogoutButton } from "@/app/admin/logout-button";
 import { isAdmin } from "@/lib/admin-auth";
 import { listPolls } from "@/lib/polls";
 
@@ -13,9 +14,12 @@ export default async function Home() {
         <h1 className="text-2xl font-semibold">투표 목록</h1>
         <div className="flex items-center gap-4">
           {admin ? (
-            <Link href="/admin" className="text-sm font-medium underline">
-              운영자 대시보드
-            </Link>
+            <div className="flex items-center gap-4">
+              <Link href="/admin" className="text-sm font-medium underline">
+                운영자 대시보드
+              </Link>
+              <LogoutButton />
+            </div>
           ) : (
             <Link href="/admin/login" className="text-sm font-medium underline">
               운영자 로그인

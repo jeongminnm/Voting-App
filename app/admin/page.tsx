@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
+import { LogoutButton } from "@/app/admin/logout-button";
 import { isAdmin } from "@/lib/admin-auth";
 import { isClosed } from "@/lib/closing";
 import { formatKst } from "@/lib/kst";
@@ -14,7 +15,10 @@ export default async function AdminDashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold">운영자 대시보드</h1>
+      <div className="flex items-start justify-between gap-4">
+        <h1 className="text-2xl font-semibold">운영자 대시보드</h1>
+        <LogoutButton />
+      </div>
       <Link href="/" className="self-start text-sm font-medium underline">
         투표 목록으로
       </Link>
