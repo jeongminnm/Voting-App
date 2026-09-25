@@ -1,5 +1,5 @@
 // polls 데이터 접근 모듈(lib/polls)의 메모리 기반 가짜. 테스트에서 vi.mock 으로 대체한다.
-import type { NewPoll, Poll, PollSummary } from "@/lib/polls";
+import type { AdminPollSummary, NewPoll, Poll, PollSummary } from "@/lib/polls";
 
 let polls: Poll[] = [];
 let dbDown = false;
@@ -23,6 +23,19 @@ export async function listPolls(): Promise<PollSummary[]> {
   return [...polls]
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
     .map(({ id, question }) => ({ id, question }));
+}
+
+export async function listAdminPolls(): Promise<AdminPollSummary[]> {
+  throwIfDbDown();
+  return [...polls]
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .map((poll) => ({
+      id: poll.id,
+      question: poll.question,
+      created_at: poll.created_at,
+      closes_at: poll.closes_at,
+      total_votes: poll.options.reduce((total, option) => total + option.vote_count, 0),
+    }));
 }
 
 export async function getPoll(id: string): Promise<Poll | null> {

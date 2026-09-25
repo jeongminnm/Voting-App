@@ -6,6 +6,14 @@ export type PollSummary = {
   question: string;
 };
 
+export type AdminPollSummary = {
+  id: string;
+  question: string;
+  created_at: string;
+  closes_at: string | null;
+  total_votes: number;
+};
+
 export type PollOption = {
   id: string;
   label: string;
@@ -30,6 +38,13 @@ export type NewPoll = {
 // neon 드라이버는 행을 Record<string, any> 로만 돌려주므로, 각 SELECT 가 돌려주는 행 모양을 여기서 명시한다.
 // (timestamptz 는 Date, integer 는 number 로 온다.)
 type PollSummaryRow = { id: string; question: string };
+type AdminPollSummaryRow = {
+  id: string;
+  question: string;
+  created_at: Date;
+  closes_at: Date | null;
+  total_votes: number | string | null;
+};
 type PollRow = { id: string; question: string; created_at: Date; closes_at: Date | null };
 type OptionRow = { id: string; label: string; vote_count: number };
 type IdRow = { id: string };
@@ -38,6 +53,24 @@ type PollIdRow = { poll_id: string };
 export async function listPolls(): Promise<PollSummary[]> {
   const rows = (await sql`select id, question from polls order by created_at desc`) as PollSummaryRow[];
   return rows.map((row) => ({ id: row.id, question: row.question }));
+}
+
+export async function listAdminPolls(): Promise<AdminPollSummary[]> {
+  const rows = (await sql`
+    select p.id, p.question, p.created_at, p.closes_at, coalesce(sum(o.vote_count), 0) as total_votes
+    from polls p
+    left join options o on o.poll_id = p.id
+    group by p.id, p.question, p.created_at, p.closes_at
+    order by p.created_at desc
+  `) as AdminPollSummaryRow[];
+
+  return rows.map((row) => ({
+    id: row.id,
+    question: row.question,
+    created_at: row.created_at.toISOString(),
+    closes_at: row.closes_at ? row.closes_at.toISOString() : null,
+    total_votes: Number(row.total_votes ?? 0),
+  }));
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
